@@ -1,0 +1,232 @@
+########################Análise sobre dados da PNAD COVID############################
+#Carregando pacotes com possíveis usos nas análises:
+library(readr)
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(srvyr)
+library(readr)
+library(ggplot2)
+library(tidyr)
+
+########ORIENTAÇÃO##########
+
+#Utilize os dados públicos da pesquisa PNAD COVID19 de 2020 com o período mínimo de análise de 3 meses. 
+#Escolha no máximo 15 questões da pesquisa para sua análise.
+
+#Como são 3 meses, escolhi os ultimos meses (setembro, outubro e novembro), para dar maior agilidade e olhar com 
+# melhor foco os dados, selecionei para importar apenas as variáveis das quais farei as 15 questões descritivas. 
+# Um ponto para a escolhas das variáveis foi focar nas com menores dados faltantes, para as analises terem maior precisão.
+pnad_setembro <- read_csv("PNAD_COVID_092020.csv", col_select = c("UPA", "Estrato", "C013", "F002A3", "F002A2","B009B", "V1032", "A002", "A003", "B0011", "B0012", "B0013", "B0013", "B0014", "B0015", "B0016", "B011", "B0101", "B0102", "B0103", "C007", "B008", "B007", "D0051"))
+pnad_outubro <- read_csv("PNAD_COVID_102020.csv", col_select = c("UPA", "Estrato", "C013", "F002A3", "F002A2", "B009B", "V1032", "A002", "A003", "B0011", "B0012", "B0013", "B0013", "B0014", "B0015", "B0016", "B011", "B0101", "B0102", "B0103", "C007", "B008", "B007", "D0051"))
+pnad_novembro <- read_csv("PNAD_COVID_112020.csv", col_select = c("UPA", "Estrato", "C013", "F002A3", "F002A2","B009B", "V1032", "A002", "A003", "B0011", "B0012", "B0013", "B0013", "B0014", "B0015", "B0016", "B011", "B0101", "B0102", "B0103", "C007", "B008", "B007", "D0051"))
+
+#para juntar os 3 meses, por meio da função bind_rows
+pnad_final <- bind_rows(pnad_setembro, pnad_outubro, pnad_novembro)
+
+#PNAD COVID é uma pesquisa de amostra, então é importante usar os pesos fornecidos 
+#para garantir que as estatísticas geradas sejam representativas da população total.
+# Conectando os pesos e os filtros que estão no dicionário
+library(survey)
+pnad_pesos <- pnad_final %>% as_survey_design(ids = UPA, strata = Estrato, weights = V1032, nest = TRUE)
+
+#Manipulando os dados para permitir analises por meio de variáveis categóricas
+#usando o case_when pois permite criar uma nova coluna baseada em uma condição.
+
+pnad_pesos <- pnad_pesos %>% mutate(one = 1,
+                                    sexo = ifelse(A003 == 1, "Homem", "Mulher"),
+                                    Idade = case_when(
+                                      A002 %in% 15:24 ~ "15-24",
+                                      A002 %in% 25:34 ~ "25-34",
+                                      A002 %in% 35:49 ~ "35-49",
+                                      A002 %in% 50:64 ~ "50-64",
+                                      A002 > 64 ~ "65+"),
+                                    Febre = factor(case_when(
+                                      B0011 == 1 ~ "SIM",
+                                      B0011 == 2 ~ "NÃO",
+                                      B0011 == 3 ~ "NÃO SABE")),
+                                    Tosse = factor(case_when(
+                                      B0012 == 1 ~ "SIM",
+                                      B0012 == 2 ~ "NÃO",
+                                      B0012 == 3 ~ "NÃO SABE")),
+                                    Garganta = factor(case_when(
+                                      B0013 == 1 ~ "SIM",
+                                      B0013 == 2 ~ "NÃO",
+                                      B0013 == 3 ~ "NÃO SABE")),
+                                    Dificuldade_de_Respirar = factor(case_when(
+                                      B0014 == 1 ~ "SIM",
+                                      B0014 == 2 ~ "NÃO",
+                                      B0014 == 3 ~ "NÃO SABE")),
+                                    Dor_cabeca = factor(case_when(
+                                      B0015 == 1 ~ "SIM",
+                                      B0015 == 2 ~ "NÃO",
+                                      B0015 == 3 ~ "NÃO SABE")),
+                                    Dor_peito = factor(case_when(
+                                      B0016 == 1 ~ "SIM",
+                                      B0016 == 2 ~ "NÃO",
+                                      B0016 == 3 ~ "NÃO SABE")),
+                                    Resultado = factor(case_when(
+                                      B009B == 1 ~ "Positivo",
+                                      B009B == 2 ~ "Negativo",
+                                      B009B == 3 ~ "Inconclusivo",
+                                      B009B == 4 ~ "Não recebeu")),
+                                    Fez_teste_Covid = factor(case_when(
+                                      B008 == 1 ~ "SIM",
+                                      B008 == 2 ~ "NÃO")),
+                                    Diabetes = factor(case_when(
+                                      B0101 == 1 ~ "SIM",
+                                      B0101 == 2 ~ "NÃO")),
+                                    Hipertensão = factor(case_when(
+                                      B0102 == 1 ~ "SIM",
+                                      B0102 == 2 ~ "NÃO")),
+                                    Doenca_pulmao = factor(case_when(
+                                      B0103 == 1 ~ "SIM",
+                                      B0103 == 2 ~ "NÃO")),
+                                    Restringiu_contato = factor(case_when(
+                                      B011 == 1 ~ "NÃO",
+                                      B011 == 2 ~ "REDUZIU",
+                                      B011 == 3 ~ "SAIU SÓ EM NECESSIDADE",
+                                      B011 == 4 ~ "FICOU SÓ EM CASA")),
+                                    Plano_saude = factor(case_when(
+                                      B007 == 1 ~ "SIM",
+                                      B007 == 2 ~ "NÃO")),
+                                    Auxilio_emergencial = factor(case_when(
+                                      D0051 == 1 ~ "SIM",
+                                      D0051 == 2 ~ "NÃO")),
+                                    Tem_mascara = factor(case_when(
+                                      F002A3 == 1 ~ "SIM",
+                                      F002A3 == 2 ~ "NÃO",
+                                      F002A3 == 3 ~ "NÃO SABE")),
+                                    Tem_Alcool70 = factor(case_when(
+                                      F002A2 == 1 ~ "SIM",
+                                      F002A2 == 2 ~ "NÃO",
+                                      F002A2 == 3 ~ "NÃO SABE")),
+)
+
+write.csv(pnad_pesos, "pnad_final.csv")
+dataset <- as.data.frame(pnad_final)
+#########################################################
+
+#Calculando a % dos sintomas 
+library(dplyr)
+#contando quantos pacientes têm cada entrevistados
+total_febre <- pnad_final %>% 
+  filter(Febre == "SIM") %>% 
+  nrow()
+
+total_Tosse <- pnad_final %>% 
+  filter(Tosse == "SIM") %>% 
+  nrow()
+
+total_Garganta <- pnad_final %>% 
+  filter(Garganta == "SIM") %>% 
+  nrow()
+
+total_dificuldade_respirar <- pnad_final %>% 
+  filter(Dificuldade_de_Respirar == "SIM") %>% 
+  nrow()
+
+total_dor_cabeca <- pnad_final %>% 
+  filter(Dor_cabeca == "SIM") %>% 
+  nrow()
+
+total_dor_peito <- pnad_final %>% 
+  filter(Dor_peito == "SIM") %>% 
+  nrow()
+
+#função "nrow()" para contar o número total de entrevistados 
+
+total <- pnad_final %>%
+  nrow()
+
+#Calculando a porcentagem de pacientes que têm cada sintoma, dividindo o número de pacientes com o sintoma 
+#pelo número total de pacientes e multiplicando por 100
+
+porcentagem_febre <- (total_febre / total) * 100
+porcentagem_tosse <- (total_Tosse / total) * 100
+porcentagem_garganta <- (total_Garganta / total) * 100
+porcentagem_dif_resp <- (total_dificuldade_respirar / total) * 100
+porcentagem_dor_cabeca <- (total_dor_cabeca / total) * 100
+porcentagem_dor_peito <- (total_dor_peito / total) * 100
+
+#Visualização
+
+rotulos <- c("Febre", "Dor_peito", "Tosse", "Garganta", "Dificuldade_de_Respirar", "Dor_cabeca")
+
+pie(c(porcentagem_febre, porcentagem_dor_peito, porcentagem_tosse, porcentagem_garganta, porcentagem_dif_resp, porcentagem_dor_cabeca),
+    labels = paste(rotulos, round(c(porcentagem_febre, porcentagem_dor_peito, porcentagem_tosse, porcentagem_garganta, porcentagem_dif_resp, porcentagem_dor_cabeca), 2), "%"),
+    col = c("red", "blue", "green", "yellow", "pink", "purple"),
+    main = "Porcentagem de sintomas",
+    radius = 1)
+##############################################################################
+# Contado a quantidade de entrevistados que positivaram para COVID
+total_positivo <- pnad_final %>% 
+  filter(Resultado == "Positivo") %>% 
+  nrow()
+
+total <- pnad_final %>%
+  nrow()
+
+porcentagem_positivo <- (total_positivo/ total) * 100
+
+total_negativo <- pnad_final %>% 
+  filter(Resultado == "Negativo") %>% 
+  nrow()
+
+total <- pnad_final %>%
+  nrow()
+
+porcentagem_negativo <- (total_negativo/ total) * 100
+
+rotulos <- c("Positivo", "Negativo")
+
+pie(c(porcentagem_positivo, porcentagem_negativo),
+    labels = paste(rotulos, round(c(porcentagem_positivo, porcentagem_negativo), 2), "%"),
+    col = c("red", "blue"),
+    main = ("Resultado"),
+    radius = 1)
+
+barplot(c(porcentagem_positivo, porcentagem_negativo),
+        names.arg = c("Positivo", "Negativo"),
+        col = c("red", "blue"),
+        main = "Resultado")
+#############################################################################
+#fazendo a analise de quantos que receberam auxilio emergencial fizera a restrição
+# opitei por colocar a variável de "restrição" como filtro na vizualização do power BI
+library(dplyr)
+auxilio_e_restringiram <- pnad_final %>%
+  filter(pnad_final$Auxilio_emergencial == "SIM", Restringiu_contato != "NÃO") %>%
+  nrow()
+
+total_auxilio <- pnad_final %>%
+  filter(pnad_final$Auxilio_emergencial == "SIM") %>%
+  nrow()
+
+percentage <- auxilio_e_restringiram / total_auxilio * 100
+
+library(ggplot2)
+ggplot(data = pnad_final, aes(x = pnad_pesos$Restringiu_contato, fill = dataset$Auxilio_emergencial)) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("#00AFBB", "yellow")) +
+  labs(title = "Porcentagem de pessoas que receberam auxílio emergencial e restringiram contato",
+       x = "Restringiu contato",
+       y = "Porcentagem") +
+  theme(legend.position = "bottom")
+#############################################################################
+
+###NO POWER BI - HISTOGRAMA DA IDADE
+
+hist(na.omit(dataset$A002), col = "#00AFBB", main = "Idade", xlab = "Idade", ylab = "Freq. Absoluta")
+
+
+#Como a quantidade de possíveis perguntas se restringiam a 15 e inserindo os filtros no power BI de:
+# Perfil de risco (Diabetes, Hipertensão e doença pulmonar cronica)
+# Sexo
+# Restringiu contato
+# Positivou para covid
+#Fiz um gráfico de principais sintomas, que pode responder as perguntas da porcentagem de sintomas para cada grupo
+# ex: quantos % as mulheres apresentaram de cada grupo e os homens? qual comparação entre eles.
+# um histograma das idades que da para analisar o perfil dos entrevistados, ex: qual idade apresentam mais diabéticos
+# uma porcentagem de quantos receberam auxilio, para analisar a relação com os que restringiram contato.
+# uma porcentagem dos que possuem plano de saúde.
+    
